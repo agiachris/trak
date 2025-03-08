@@ -118,10 +118,13 @@ def get_output_memory(features: Tensor, target_grads: Tensor, target_dtype: type
 
 
 def get_free_memory(device):
+    ch.cuda.empty_cache()
+    ch.cuda.ipc_collect()
+    ch.cuda.synchronize()
     reserved = ch.cuda.memory_reserved(device=device)
     allocated = ch.cuda.memory_allocated(device=device)
-
     free = reserved - allocated
+
     return free
 
 

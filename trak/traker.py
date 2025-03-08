@@ -437,7 +437,10 @@ class TRAKer:
         self.saver.serialize_current_model_id_metadata()
 
     def finalize_features(
-        self, model_ids: Iterable[int] = None, del_grads: bool = False
+        self, 
+        model_ids: Optional[Iterable[int]] = None, 
+        del_grads: bool = False,
+        hessian_lim: Optional[int] = None,
     ) -> None:
         """For a set of checkpoints :math:`C` (specified by model IDs), and
         gradients :math:`\\{ \\Phi_c \\}_{c\\in C}`, this method computes
@@ -455,6 +458,7 @@ class TRAKer:
 
         # this method is memory-intensive, so we're freeing memory beforehand
         torch.cuda.empty_cache()
+        torch.cuda.ipc_collect()
         self.projector.free_memory()
 
         if model_ids is None:
@@ -480,7 +484,10 @@ class TRAKer:
             self.saver.load_current_store(model_id)
 
             g = ch.as_tensor(self.saver.current_store["grads"], device=self.device)
-            xtx = self.score_computer.get_xtx(g)
+            if ch.isnan(g).any() or ch.isinf(g).any():
+                raise ValueError("Featurization produced nans or infs.")
+            phi = g[:hessian_lim, ...] if hessian_lim is not None else g
+            xtx = self.score_computer.get_xtx(phi)
 
             features = self.score_computer.get_x_xtx_inv(g, xtx)
             self.saver.current_store["features"][:] = features.to(self.dtype).cpu()
