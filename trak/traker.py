@@ -424,6 +424,8 @@ class TRAKer:
         grads = self.gradient_computer.compute_per_sample_grad(batch=batch)
         grads = self.projector.project(grads, model_id=self.saver.current_model_id)
         grads /= self.normalize_factor
+        if ch.isnan(grads).any() or ch.isinf(grads).any():
+            raise ValueError("Featurization produced nans or infs.")
         self.saver.current_store["grads"][inds] = (
             grads.to(self.dtype).cpu().clone().detach()
         )
@@ -575,9 +577,10 @@ class TRAKer:
             num_samples = inds.reshape(-1).shape[0]
 
         grads = self.gradient_computer.compute_per_sample_grad(batch=batch)
-
         grads = self.projector.project(grads, model_id=self.saver.current_model_id)
         grads /= self.normalize_factor
+        if ch.isnan(grads).any() or ch.isinf(grads).any():
+            raise ValueError("Featurization produced nans or infs.")
 
         exp_name = self.saver.current_experiment_name
         self.saver.current_store[f"{exp_name}_grads"][inds] = (
