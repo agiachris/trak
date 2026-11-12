@@ -145,12 +145,13 @@ class BasicScoreComputer(AbstractScoreComputer):
     def get_xtx(self, grads: Tensor) -> Tensor:
         self.proj_dim = grads.shape[1]
         result = ch.zeros(
-            self.proj_dim, self.proj_dim, dtype=self.dtype, device=self.device
+            self.proj_dim, self.proj_dim, dtype=ch.float64, device=self.device
         )
         blocks = ch.split(grads, split_size_or_sections=self.CUDA_MAX_DIM_SIZE, dim=0)
 
         for block in blocks:
-            result += block.T.to(self.device) @ block.to(self.device)
+            block = block.to(self.device, ch.float64)
+            result += block.T @ block
 
         return result
 
@@ -160,12 +161,10 @@ class BasicScoreComputer(AbstractScoreComputer):
         xtx_reg = xtx + self.lambda_reg * torch.eye(
             xtx.size(dim=0), device=xtx.device, dtype=xtx.dtype
         )
-        xtx_inv = ch.linalg.inv(xtx_reg.to(ch.float32))
+        xtx_inv = ch.linalg.inv(xtx_reg.to(ch.float64))
 
         # center X^TX inverse a bit to avoid numerical issues when going to float16
         xtx_inv /= xtx_inv.abs().mean()
-
-        xtx_inv = xtx_inv.to(self.dtype)
 
         result = ch.empty(
             grads.shape[0], xtx_inv.shape[1], dtype=self.dtype, device=self.device
@@ -173,7 +172,7 @@ class BasicScoreComputer(AbstractScoreComputer):
         for i, block in enumerate(blocks):
             start = i * self.CUDA_MAX_DIM_SIZE
             end = min(grads.shape[0], (i + 1) * self.CUDA_MAX_DIM_SIZE)
-            result[start:end] = block.to(self.device) @ xtx_inv
+            result[start:end] = (block.to(self.device, ch.float64) @ xtx_inv).to(self.dtype)
         return result
 
     def get_scores(
